@@ -1,0 +1,56 @@
+@startuml
+
+title Gossip Leader Receive block from Orderer
+
+|GossipService|
+|Gossip Node|
+|Gossip State|
+|Deliverer|
+
+|GossipService|
+:InitializeChannel;
+
+:NewGossipStateProvider;
+|Gossip State|
+fork
+    :deliverPayloads;
+    while (not stop & payloads.Ready)
+        :payloads.Pop();
+        note right: Pop Payload from AddPayload
+        :commitBlock();
+    end while
+endfork
+
+|GossipService|
+:deliveryService.StartDeliverForChannel;
+
+|Deliverer|
+fork
+    :DeliverBlocks();
+    fork
+        while ()
+            :deliverClient.Recv();
+            note left: Recv Block from Orderer
+            :write to chan;
+        endwhile
+    end fork
+
+        while (read from chan)
+            :processMsg;
+            if (is DeliverResponse_Block) then (yes)
+|GossipService|
+                :AddPayload;
+|Gossip State|
+                :AddPayload;
+                :payloads.Push(payload);
+|GossipService|
+                :Gossip;
+|Gossip Node|
+                :Gossip;
+                note right: Gossip Block to MyOrg's peers
+|Deliverer|
+            endif
+        endwhile
+endfork
+
+@enduml

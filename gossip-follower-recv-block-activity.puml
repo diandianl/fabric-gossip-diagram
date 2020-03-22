@@ -1,0 +1,176 @@
+@startuml
+scale 0.8
+title
+Gossip Follower Receive block from Orderer
+
+endtitle
+
+|Gossip Node|
+|GossipChannel|
+|BlocksPuller|
+|PullEngine|
+fork
+    while (Not Die)
+        :Sleep PullInterval;
+        :initiatePull;
+        :processIncomingDigests;
+        :ignoreDigests;
+        :Collect requestMapping;
+        :acceptResponses;
+        while (loop for requestMapping)
+|BlocksPuller|
+            :SendReq;
+            note right: DataUpdate Resp From Here
+|PullEngine|
+        endwhile
+        :endPull;
+        note right: Clear Engine
+    endwhile
+endfork
+
+|Gossip Node|
+fork    
+    #HotPink:acceptMessages
+    From External;
+    while (Not Stop & Accept GossipMessage from comm)
+        :handleMessage;
+        if (Is Channel Restricted Message) then (no)
+            if (Is Discovery Message) then (yes)
+                :forwardDiscoveryMsg;
+            endif
+            if (Is Identity Pull Message) then (yes)
+                :certStore.handleMessage;
+            endif
+        else (yes)
+            -[#blue]->
+            if (GossipChannel for msg exist) then (no)
+                if (Is MyOrg StateInfoMsg & not in local) then (yes)
+                    :emitter.Add;
+                    note right: Add to Send Queue
+                endif
+            else
+                -[#blue]->
+|GossipChannel|
+                :HandleMessage;
+                -[#blue]->
+                if (Is StateInfoPullRequestMsg) then (yes)
+                    :createStateInfoSnapshot;
+                    :msg.Respond;
+                else
+                    -[#blue]->
+                    if (Is StateInfoSnapshot) then (yes)
+                        :handleStateInfSnapshot;
+                    else
+                        -[#blue]->
+                        if (Is DataMsg Or StateInfoMsg) then (yes)
+                            -[#blue]->
+                            if (Is **<color:red>DataMsg</color>**) then (yes)
+                                -[#blue]->
+                                :Lock;
+                                -[#blue]->
+                                :blockMsgStore.Add;
+                                -[#blue]->
+                                if (Added) then (yes)
+                                    -[#blue]->
+|BlocksPuller|
+                                    :Add;
+                                    -[#blue]->
+|PullEngine|
+                                    :Add;
+|BlocksPuller|
+                                    -[#blue]->
+|GossipChannel|
+                                endif
+                                -[#blue]->
+                                :Unlock;
+                                -[#blue]->
+                            else
+                                :stateInfoMsgStore.Add;
+                            endif
+                            -[#blue]->
+                            if (MsgStore Added) then (yes)
+                                -[#blue]->
+                                :Forward;
+                                -[#blue]->
+|Gossip Node|
+                                :emitter.Add;
+                                -[#blue]->
+                                note left: Add to Send Queue
+                                #blue:DeMultiplex;
+                                note left: DeMultiplex to local subscribers
+|GossipChannel|
+                            endif
+                        else
+                            -[#blue]->
+                            if (Is Pull Block Msg) then (yes)
+                                -[#blue]->
+                                if (Is **<color:red>DataUpdate</color>**) then (yes)
+                                    -[#blue]->
+                                    while (Has more msg)
+                                        :blockMsgStore.Add;
+                                    -[#blue]->
+                                    endwhile
+                                    -[#blue]->
+                                endif
+                                -[#blue]->
+|BlocksPuller|
+                                :HandleMessage;
+                                -[#blue]->
+                                if (Is Hello) then (yes)
+|PullEngine|
+                                    :OnHello;
+|BlocksPuller|
+                                    :SendDigest;
+                                else
+                                    -[#blue]->
+                                    if (Is DataDig) then (yes)
+|PullEngine|
+                                        :OnDigest;
+|BlocksPuller|
+                                    else
+                                        -[#blue]->
+                                        if (Is DataReq) then (yes)
+|PullEngine|
+                                            :OnReq;
+|BlocksPuller|
+                                            :SendRes;
+                                            note left: Send DataUpdate
+                                        else
+                                            -[#blue]->
+                                            if (Is DataUpdate) then (yes)
+                                                -[#blue]->
+                                                while (range of res.Data)
+                                                    :MsgCons;
+                                                    -[#blue]->
+|Gossip Node|
+                                                    #blue:DeMultiplex;
+                                                    note left: DeMultiplex to local subscribers
+|BlocksPuller|
+                                                endwhile
+|PullEngine|
+                                                :OnRes;
+|BlocksPuller|
+                                            endif
+                                        endif
+                                    endif
+                                endif
+                            endif
+|GossipChannel|
+                        endif
+                        if (Is LeadershipMsg) then (yes)
+                            :leaderMsgStore.Add;
+                            if (Added) then (yes)
+|Gossip Node|
+                                :DeMultiplex;
+|GossipChannel|
+                            endif
+                        endif
+|Gossip Node|
+                    endif
+                endif
+            endif
+        endif
+    endwhile
+endfork
+
+@enduml

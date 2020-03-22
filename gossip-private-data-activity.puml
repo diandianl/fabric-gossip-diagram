@@ -1,0 +1,56 @@
+@startuml
+
+title Gossip Private Data Distribute
+
+|Endorer|
+|GossipService|
+|Gossip Privdata|
+|Gossip State|
+
+|Gossip State|
+fork
+    :receiveAndDispatchDirectMessages;
+    while (Recv Message from Comm)
+        fork
+            if (IsRemoteStateMessage) then (yes)
+                :directMessage;
+            else
+                :privateDataMessage;
+|Gossip Privdata|
+                :StorePvtData;
+|Gossip State|
+            endif
+        endfork
+    endwhile
+endfork
+
+|Endorer|
+:SimulateProposal;
+if (PvtSimulationResults != nil) then (yes)
+    :AssemblePvtRWSet;
+    note left: Collect CollectionConfigs
+|GossipService|
+    :DistributePrivateData;
+|Gossip Privdata|
+    :Distribute;
+    :computeDisseminationPlan;
+    while (Range of Namespace Private RWSet)
+        :CollectionConfig for namespace;
+        while (Range of Collection Private RWSet)
+            :getCollectionConfig;
+            :AccessPolicy;
+            :createPrivateDataMessage;
+            :disseminationPlanForMsg;
+        endwhile
+    endwhile
+    :disseminate;
+    while (Range of disseminationPlan)
+        fork
+            :SendByCriteria;
+        endfork
+    endwhile
+    :StorePvtData;
+    :store.Persist;
+endif
+
+@enduml

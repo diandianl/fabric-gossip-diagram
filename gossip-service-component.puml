@@ -1,0 +1,114 @@
+@startuml
+
+center header Gossip Service Components
+
+package "gossip/service" {
+    [GossipService]
+    [privateHandler]
+}
+
+package "gossip/gossip" {
+    [Node]
+    [channelState]
+    [batchingEmitter]
+    [discoveryAdapter]
+
+    package "channel" {
+        [GossipChannel]
+    }
+
+    package "pull" {
+        [Mediator]
+    }
+
+    package "algo" {
+        [PullEngine]
+    }
+
+    package "msgstore" {
+        [MessageStore]
+    }
+
+    [Mediator] --> [PullEngine]
+
+    [GossipChannel] --* [Mediator]: blocksPuller
+    [GossipChannel] --* [MessageStore]
+
+    [channelState] --o [GossipChannel]
+
+    [Node] --* [channelState]
+    [Node] --* [batchingEmitter]
+    [Node] --* [Mediator]: certPuller
+}
+
+package "gossip/state" {
+    [GossipStateProvider]
+    note right of [GossipStateProvider]
+        Manage channel state
+        Block Data Message Handling
+    end note
+}
+
+package "gossip/election" {
+    [LeaderElectionService]
+}
+
+package "gossip/comm" {
+    [Comm]
+    [ChannelDeMultiplexer]
+    [connectionStore]
+    [connection]
+
+    [Comm] --> [ChannelDeMultiplexer]
+    [Comm] --* [connectionStore]
+    [connectionStore] --o [connection]
+    gRPC - [connection]
+}
+/'
+package "gossip/identity" {
+    [Mapper]
+}
+'/
+
+package "gossip/privdata" {
+    [PvtDataDistributor]
+    [Fetcher]
+    [Coordinator]
+    [Reconciler]
+
+    [Coordinator] --> [Fetcher]
+    [Reconciler] --> [Fetcher]
+}
+
+package "gossip/discovery" {
+    [Discovery]
+}
+
+Peer --> [GossipService]
+
+[GossipService] --* [Node]
+[GossipService] --o [privateHandler]
+[GossipService] --o [GossipStateProvider]
+[GossipService] --o [LeaderElectionService]
+[GossipService] --o DeliverService
+
+[Node] --* [Comm]
+'[Node] --* [Mapper]
+[Node] --* [ChannelDeMultiplexer]
+[Node] --* [Discovery]
+
+[privateHandler] --* [Coordinator]
+[privateHandler] --* [PvtDataDistributor]
+[privateHandler] --* [Reconciler]
+
+[GossipStateProvider] --> [Coordinator]
+
+'[Comm] --> [Mapper]
+
+[discoveryAdapter] --> [Comm]
+[Discovery] --> [discoveryAdapter]
+
+[Coordinator] --> Committer
+[Coordinator] --> Validator
+
+@enduml
